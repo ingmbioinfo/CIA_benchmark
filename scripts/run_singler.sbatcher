@@ -1,0 +1,25 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --job-name=SingleR
+# #SBATCH --nodelist=nightbird
+# #SBATCH --exclusive
+
+set -euo pipefail
+DATASET="${1:?Usage: sbatch -c <cpus> run_singler.sbatcher <dataset> <cpus>}"
+REQ_CPUS="${2:-${SLURM_CPUS_PER_TASK:-1}}"
+
+echo "[SingleR] dataset=${DATASET}  cpus=${REQ_CPUS}"
+echo "[SingleR] jobid=${SLURM_JOB_ID:-NA} node=${SLURMD_NODENAME:-NA}"
+cd "${SLURM_SUBMIT_DIR:-$PWD}"
+
+export OMP_NUM_THREADS="$REQ_CPUS"
+export OPENBLAS_NUM_THREADS="$REQ_CPUS"
+export MKL_NUM_THREADS="$REQ_CPUS"
+export NUMEXPR_NUM_THREADS="$REQ_CPUS"
+export VECLIB_MAXIMUM_THREADS="$REQ_CPUS"
+export UCX_TLS="tcp,sm,self"
+
+Rscript run_singler.R "$DATASET" "$REQ_CPUS"
+

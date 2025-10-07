@@ -1,0 +1,36 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --job-name=CIA
+# Optional pin:
+# #SBATCH --nodelist=nightbird
+# Optional exclusive:
+# #SBATCH --exclusive
+
+set -euo pipefail
+
+# --- Args (same as Celltypist): <dataset> <cpus> ---
+DATASET="${1:?Usage: sbatch -c <cpus> run_cia.sbatcher <dataset> <cpus>}"
+REQ_CPUS="${2:-${SLURM_CPUS_PER_TASK:-1}}"
+
+echo "[CIA] dataset=${DATASET}  cpus=${REQ_CPUS}"
+echo "[CIA] jobid=${SLURM_JOB_ID:-NA} node=${SLURMD_NODENAME:-NA}"
+
+# Work from the directory where you ran sbatch (so we can see run_cia.py next to this file)
+cd "${SLURM_SUBMIT_DIR:-$PWD}"
+
+# Match thread env to -c (mirrors Celltypist pattern)
+export OMP_NUM_THREADS="$REQ_CPUS"
+export OPENBLAS_NUM_THREADS="$REQ_CPUS"
+export MKL_NUM_THREADS="$REQ_CPUS"
+export NUMEXPR_NUM_THREADS="$REQ_CPUS"
+export VECLIB_MAXIMUM_THREADS="$REQ_CPUS"
+
+# (Optional) activate env, if you do this in Celltypist too:
+# source "$(conda info --base)/etc/profile.d/conda.sh"
+# conda activate cia
+
+# Launch runner (same folder as this sbatcher)
+python run_cia.py "$DATASET" "$REQ_CPUS"
+

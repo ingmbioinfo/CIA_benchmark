@@ -1,0 +1,36 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --job-name=CIA_R
+# Optional pin:
+# #SBATCH --nodelist=nightbird
+# #SBATCH --exclusive
+
+set -euo pipefail
+
+DATASET="${1:?Usage: sbatch -c <cpus> run_cia_R.sbatcher <dataset> <cpus>}"
+REQ_CPUS="${2:-${SLURM_CPUS_PER_TASK:-1}}"
+
+echo "[CIA_R] dataset=${DATASET}  cpus=${REQ_CPUS}"
+echo "[CIA_R] jobid=${SLURM_JOB_ID:-NA} node=${SLURMD_NODENAME:-NA}"
+
+cd "${SLURM_SUBMIT_DIR:-$PWD}"
+
+# Match thread env to -c
+export OMP_NUM_THREADS="$REQ_CPUS"
+export OPENBLAS_NUM_THREADS="$REQ_CPUS"
+export MKL_NUM_THREADS="$REQ_CPUS"
+export NUMEXPR_NUM_THREADS="$REQ_CPUS"
+export VECLIB_MAXIMUM_THREADS="$REQ_CPUS"
+export UCX_TLS="tcp,sm,self"
+
+# Activate your R env if needed (adjust name)
+# source "$(conda info --base)/etc/profile.d/conda.sh"
+# conda activate cia_r
+
+Rscript -e 'if (!requireNamespace("remotes", quietly=TRUE)) install.packages("remotes", repos="https://cloud.r-project.org"); remotes::install_github("ingmbioinfo/CIA_R", dependencies=TRUE, upgrade="never", build_vignettes=FALSE)'
+
+
+Rscript run_cia_R.R "$DATASET" "$REQ_CPUS"
+

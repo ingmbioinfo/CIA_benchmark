@@ -1,0 +1,33 @@
+#!/bin/bash
+#SBATCH -N 1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --job-name=scANVI
+# Optional pin:
+# #SBATCH --nodelist=nightbird
+# #SBATCH --exclusive
+
+set -euo pipefail
+
+DATASET="${1:?Usage: sbatch -c <cpus> run_scanvi.sbatcher <dataset> <cpus>}"
+REQ_CPUS="${2:-${SLURM_CPUS_PER_TASK:-1}}"
+
+echo "[scANVI] dataset=${DATASET}  cpus=${REQ_CPUS}"
+echo "[scANVI] jobid=${SLURM_JOB_ID:-NA} node=${SLURMD_NODENAME:-NA}"
+
+cd "${SLURM_SUBMIT_DIR:-$PWD}"
+
+# Thread env to match -c
+export OMP_NUM_THREADS="$REQ_CPUS"
+export OPENBLAS_NUM_THREADS="$REQ_CPUS"
+export MKL_NUM_THREADS="$REQ_CPUS"
+export NUMEXPR_NUM_THREADS="$REQ_CPUS"
+export VECLIB_MAXIMUM_THREADS="$REQ_CPUS"
+export UCX_TLS="tcp,sm,self"
+
+# Activate your scANVI env if needed
+# source "$(conda info --base)/etc/profile.d/conda.sh"
+# conda activate scanvi
+
+python run_scanvi.py "$DATASET" "$REQ_CPUS"
+

@@ -1,0 +1,31 @@
+#!/bin/bash
+# run_celltypist.sbatcher — submit Celltypist job on neuro/pbmc/cancer
+# Relative-path version intended to live in repo_root/scripts/
+# Usage:
+#   sbatch -c 32 scripts/run_celltypist.sbatcher neuro 32
+#   sbatch -c 64 scripts/run_celltypist.sbatcher pbmc 64
+
+#SBATCH --job-name=celltypist
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=100G
+#SBATCH --time=08:00:00
+#SBATCH -o %x_%j.out
+
+set -euo pipefail
+
+if [[ $# -lt 2 ]]; then
+  echo "Usage: sbatch -c <CPUS> $0 <neuro|pbmc|cancer> <CPUS>" >&2
+  exit 1
+fi
+
+DATASET="$1"
+CPUS="$2"
+
+echo "[INFO] Dataset: ${DATASET}"
+echo "[INFO] CPUs:    ${CPUS}"
+
+
+# Execute (Python script resolves all paths relative to scripts/)
+python "run_celltypist.py" --dataset "${DATASET}" --cpus "${CPUS}"
+
+echo "[DONE] Celltypist ${DATASET} completed."
