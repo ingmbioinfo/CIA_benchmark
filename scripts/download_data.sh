@@ -99,7 +99,8 @@ download_and_extract() {
 
   echo "[INFO] → $tool : $fname"
   fetch "$url" "$compressed"
-  decompress_xz_keep "$compressed"
+  decompress_xz_keep "$compressed" && rm -f "$compressed"
+
 
   # Special rule: copy Celltypist test .h5ad to AUCell & CIA
   if [[ "$fname" =~ ^Celltypist_test_(cancer|neuro|pbmc)\.h5ad\.xz$ ]]; then
