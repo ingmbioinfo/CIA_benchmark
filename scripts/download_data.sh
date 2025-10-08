@@ -8,7 +8,7 @@ trap 'ret=$?; echo "[FAIL] line $LINENO: $BASH_COMMAND (exit $ret)"; exit $ret' 
 
 # If run via Slurm, ensure paths are relative to the submit directory
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
-
+mkdir ../rebuttal_datasets/Celltypist ../rebuttal_datasets/scANVI ../rebuttal_datasets/scBalance ../rebuttal_datasets/SingleR 
 # Base target: one level up from scripts/
 BASE_DIR="$(cd .. && pwd)/rebuttal_datasets"
 [[ -d "$BASE_DIR" ]] || { echo "ERROR: missing base dir: $BASE_DIR"; exit 2; }
