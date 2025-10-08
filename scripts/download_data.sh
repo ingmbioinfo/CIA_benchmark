@@ -1,11 +1,54 @@
 #!/usr/bin/env bash
+# Run from the repo's scripts/ directory.
+# Writes ONLY into existing ../rebuttal_datasets/{classifier} folders.
+# Does NOT create directories and does NOT overwrite existing files.
+
 set -euo pipefail
+trap 'ret=$?; echo "[FAIL] line $LINENO: $BASH_COMMAND (exit $ret)"; exit $ret' ERR
 
-BASE_DIR="${1:-$(pwd)/rebuttal_datasets}"
-mkdir -p "$BASE_DIR"
+# If run via Slurm, ensure paths are relative to the submit directory
+cd "${SLURM_SUBMIT_DIR:-$PWD}"
 
-# ---- all URLs ----
-read -r -d '' URLS <<'EOF'
+# Base target: one level up from scripts/
+BASE_DIR="$(cd .. && pwd)/rebuttal_datasets"
+[[ -d "$BASE_DIR" ]] || { echo "ERROR: missing base dir: $BASE_DIR"; exit 2; }
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+fetch() { # fetch <url> <dest>
+  local url="$1" dest="$2"
+  if [[ -f "$dest" ]]; then
+    echo "[SKIP] already downloaded: $dest"
+    return 0
+  fi
+  if have curl; then
+    curl -fL --retry 5 --retry-connrefused --continue-at - -o "$dest" "$url"
+  elif have wget; then
+    wget -c --tries=10 --timeout=30 -O "$dest" "$url"
+  else
+    echo "ERROR: need curl or wget." >&2; return 1
+  fi
+}
+
+decompress_xz_keep() { # keep .xz; skip if output exists
+  local path="$1"
+  local out="${path%.xz}"
+  if [[ -f "$out" ]]; then
+    echo "[SKIP] already extracted: $out"
+    return 0
+  fi
+  if have xz; then
+    xz -dk "$path"
+  elif have unxz; then
+    unxz -k "$path"
+  else
+    echo "ERROR: need xz or unxz to decompress $path" >&2; return 1
+  fi
+  echo "[OK] extracted: $(basename "$out")"
+}
+
+# ---------------- URLs ----------------
+readarray -t URLS <<'EOF'
 https://zenodo.org/records/17241856/files/Celltypist_test_cancer.h5ad.xz?download=1
 https://zenodo.org/records/17241856/files/Celltypist_test_neuro.h5ad.xz?download=1
 https://zenodo.org/records/17241856/files/Celltypist_test_pbmc.h5ad.xz?download=1
@@ -41,68 +84,43 @@ https://zenodo.org/records/17241856/files/SingleR_train_neuro.rds.xz?download=1
 https://zenodo.org/records/17241856/files/SingleR_train_pbmc.rds.xz?download=1
 EOF
 
-echo "[INFO] Base directory: $BASE_DIR"
-echo "[INFO] Will keep both compressed (.xz) and extracted files."
-
-need_cmd() { command -v "$1" >/dev/null 2>&1 || { echo "ERROR: '$1' not found." >&2; exit 1; }; }
-need_cmd curl
-need_cmd xz
-
+# ---------------- main ----------------
 download_and_extract() {
   local url="$1"
-  local filename
-  filename="$(basename "${url%%\?*}")"   # strip ?download=1
-  local tool="${filename%%_*}"           # prefix before first underscore
+  local fname="${url##*/}"; fname="${fname%%\?*}"   # strip ?download=1
+  local tool="${fname%_test_*}"; tool="${tool%_train_*}"
+  [[ "$tool" == "$fname" ]] && tool="${fname%%_*}"
+
   local dest_dir="$BASE_DIR/$tool"
-  mkdir -p "$dest_dir"
+  [[ -d "$dest_dir" ]] || { echo "ERROR: expected dir not found: $dest_dir"; exit 3; }
 
-  local compressed_path="$dest_dir/$filename"
-  local extracted_path="${compressed_path%.xz}"
+  local compressed="$dest_dir/$fname"
+  local extracted="${compressed%.xz}"
 
-  echo "[INFO] -> $tool : $filename"
-  if [[ ! -f "$compressed_path" ]]; then
-    curl -fL --retry 5 --retry-connrefused --continue-at - -o "$compressed_path" "$url"
-  else
-    echo "[SKIP] already downloaded: $compressed_path"
-  fi
+  echo "[INFO] → $tool : $fname"
+  fetch "$url" "$compressed"
+  decompress_xz_keep "$compressed"
 
-  if [[ ! -f "$extracted_path" ]]; then
-    # -d decompress, -k keep .xz, -T0 use all cores
-    xz -T0 -dk "$compressed_path"
-    echo "[OK] extracted: $(basename "$extracted_path")"
-  else
-    echo "[SKIP] already extracted: $extracted_path"
-  fi
-
-  # Special rule: Celltypist_test_{dataset}.h5ad -> also AUCell & CIA
-  if [[ "$filename" =~ ^Celltypist_test_(cancer|neuro|pbmc)\.h5ad\.xz$ ]]; then
+  # Special rule: copy Celltypist test .h5ad to AUCell & CIA
+  if [[ "$fname" =~ ^Celltypist_test_(cancer|neuro|pbmc)\.h5ad\.xz$ ]]; then
     local ds="${BASH_REMATCH[1]}"
-    mkdir -p "$BASE_DIR/AUCell" "$BASE_DIR/CIA"
+    local aucell_dir="$BASE_DIR/AUCell"
+    local cia_dir="$BASE_DIR/CIA"
+    [[ -d "$aucell_dir" ]] || { echo "ERROR: expected dir not found: $aucell_dir"; exit 4; }
+    [[ -d "$cia_dir"   ]] || { echo "ERROR: expected dir not found: $cia_dir"; exit 4; }
 
-    local aucell_target="$BASE_DIR/AUCell/AUCell_test_${ds}.h5ad"
-    local cia_target="$BASE_DIR/CIA/CIA_test_${ds}.h5ad"
+    local aucell_target="$aucell_dir/AUCell_test_${ds}.h5ad"
+    local cia_target="$cia_dir/CIA_test_${ds}.h5ad"
 
-    if [[ ! -f "$aucell_target" ]]; then
-      cp -n "$extracted_path" "$aucell_target"
-      echo "[OK] copied to: AUCell/AUCell_test_${ds}.h5ad"
-    else
-      echo "[SKIP] AUCell copy exists: $aucell_target"
-    fi
-
-    if [[ ! -f "$cia_target" ]]; then
-      cp -n "$extracted_path" "$cia_target"
-      echo "[OK] copied to: CIA/CIA_test_${ds}.h5ad"
-    else
-      echo "[SKIP] CIA copy exists: $cia_target"
-    fi
+    [[ -f "$aucell_target" ]] || { cp -n "$extracted" "$aucell_target" && echo "[OK] copied → $aucell_target"; }
+    [[ -f "$cia_target"   ]] || { cp -n "$extracted" "$cia_target"   && echo "[OK] copied → $cia_target"; }
   fi
 }
 
-# Iterate URLs
-while IFS= read -r url; do
+for url in "${URLS[@]}"; do
   [[ -z "$url" ]] && continue
   download_and_extract "$url"
-done <<< "$URLS"
+done
 
-echo "[DONE] All files processed under: $BASE_DIR"
+echo "[DONE] Wrote into existing dirs under: $BASE_DIR"
 
